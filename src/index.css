@@ -1,0 +1,178 @@
+/* Plate — DESIGN.md token system
+ * Source: Henry broadside style (warm monochrome, paper/ink inversion, no shadows).
+ * All tokens below are the single source of truth for both Tailwind utility
+ * classes and raw CSS variable reads.
+ */
+
+@import "tailwindcss";
+
+/* -- Font stacks --
+ * Louize Display / Louize / Manuka are commercial; the substitutes (Fraunces,
+ * Inter, etc.) listed in the DESIGN.md load via @fontsource or fall through
+ * to system serifs. We declare a graceful fallback chain so the type looks
+ * editorial even with zero network.
+ */
+@theme {
+  /* -- Colors: paper/ink monochrome -- */
+  --color-paper: #fafafa;
+  --color-hairline: #eeeeee;
+  --color-midstone: #9f9f9f;
+  --color-ash: #666666;
+  --color-pebble: #b3b3b3;
+  --color-sepia: #3e3b36;
+  --color-headline-ink: #2a2722;
+  --color-ink: #2a2722; /* alias used in inverted sections */
+
+  /* -- Type families -- */
+  --font-neue-montreal: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --font-louize-display: "Fraunces", "Iowan Old Style", "Apple Garamond", Georgia, ui-serif, serif;
+  --font-louize: "Fraunces", "Iowan Old Style", Georgia, ui-serif, serif;
+  --font-manuka: "Antonio", "Oswald", "Bebas Neue", "Arial Narrow", ui-sans-serif, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace;
+
+  /* -- Type scale (size / leading / tracking) -- */
+  --text-caption: 12px;
+  --text-caption--line-height: 1.5;
+  --text-caption--letter-spacing: -0.12px;
+
+  --text-body: 16px;
+  --text-body--line-height: 1.5;
+  --text-body--letter-spacing: -0.16px;
+
+  --text-subheading: 20px;
+  --text-subheading--line-height: 1.3;
+  --text-subheading--letter-spacing: -0.2px;
+
+  --text-heading-sm: 24px;
+  --text-heading-sm--line-height: 1.2;
+  --text-heading-sm--letter-spacing: -0.24px;
+
+  --text-heading: 32px;
+  --text-heading--line-height: 1.1;
+  --text-heading--letter-spacing: -0.32px;
+
+  --text-heading-lg: 77px;
+  --text-heading-lg--line-height: 0.9;
+
+  --text-display: 132px;
+  --text-display--line-height: 0.8;
+
+  --text-display-xl: 371px;
+  --text-display-xl--line-height: 0.75;
+
+  /* -- Spacing (4px base) -- */
+  --spacing-4: 4px;
+  --spacing-8: 8px;
+  --spacing-12: 12px;
+  --spacing-16: 16px;
+  --spacing-20: 20px;
+  --spacing-24: 24px;
+  --spacing-32: 32px;
+  --spacing-48: 48px;
+  --spacing-64: 64px;
+  --spacing-80: 80px;
+  --spacing-96: 96px;
+  --spacing-224: 224px;
+
+  /* -- One radius, by design -- */
+  --radius-xl: 12px;
+  --radius: 12px;
+}
+
+/* -- Base reset + global typographic floor -- */
+:root {
+  color-scheme: light;
+  font-family: var(--font-neue-montreal);
+  font-feature-settings: "ss01", "cv11";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+}
+
+html, body, #root {
+  background: var(--color-paper);
+  color: var(--color-headline-ink);
+  min-height: 100%;
+  margin: 0;
+}
+
+body {
+  font-size: var(--text-body);
+  line-height: var(--text-body--line-height);
+  letter-spacing: var(--text-body--letter-spacing);
+}
+
+/* -- Selection: warm sepia on cream -- */
+::selection {
+  background: var(--color-sepia);
+  color: var(--color-paper);
+}
+
+/* -- Focus ring: hairline rule, not glow -- */
+*:focus-visible {
+  outline: 1px solid var(--color-headline-ink);
+  outline-offset: 2px;
+}
+
+/* -- Section primitives: paper <-> ink flips -- */
+.section-paper {
+  background: var(--color-paper);
+  color: var(--color-headline-ink);
+}
+
+.section-ink {
+  background: var(--color-headline-ink);
+  color: var(--color-paper);
+}
+
+/* -- Display serif for marquee headlines -- */
+.font-display {
+  font-family: var(--font-louize-display);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.font-serif {
+  font-family: var(--font-louize);
+  font-weight: 400;
+  letter-spacing: -0.01em;
+}
+
+.font-condensed {
+  font-family: var(--font-manuka);
+  font-weight: 400;
+  text-transform: uppercase;
+  letter-spacing: 0.01em;
+}
+
+.font-ui {
+  font-family: var(--font-neue-montreal);
+}
+
+/* -- Hairline rules -- */
+.hairline {
+  border-color: var(--color-headline-ink);
+  border-width: 1px;
+  border-style: solid;
+}
+
+.hairline-soft {
+  border-color: var(--color-hairline);
+  border-width: 1px;
+  border-style: solid;
+}
+
+/* -- Editorial prose block (used in inverted letter) -- */
+.editorial-prose {
+  font-family: var(--font-louize-display);
+  font-size: 32px;
+  font-weight: 400;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 28ch;
+  margin-inline: auto;
+}
+
+@media (max-width: 768px) {
+  .editorial-prose { font-size: 24px; }
+}
