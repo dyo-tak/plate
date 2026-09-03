@@ -1,46 +1,45 @@
-import { Routes, Route } from 'react-router-dom'
+import { Routes, Route, Navigate } from 'react-router-dom'
 import { Nav } from './components/Nav'
+import { WorkspaceProvider } from './state/workspace'
+import { Workspace } from './pages/Workspace'
 import { Home } from './pages/Home'
-import { Notes } from './pages/Notes'
 import { Settings } from './pages/Settings'
 import SyncCallback from './pages/SyncCallback'
-import { StampedHeader } from './components/StampedHeader'
-import { BrandTicker } from './components/BrandTicker'
-import { InvertedLetter } from './components/InvertedLetter'
-import { CoordinateFooter } from './components/CoordinateFooter'
+import { CommandPalette } from './components/CommandPalette'
+import { QuickSwitcher } from './components/QuickSwitcher'
+import { SearchPanel } from './components/SearchPanel'
+import { ShortcutsDialog } from './components/ShortcutsDialog'
+import { useWorkspace } from './state/workspace'
+
+function ModalHost() {
+  const ws = useWorkspace()
+  if (!ws.modal) return null
+  switch (ws.modal.kind) {
+    case 'palette':   return <CommandPalette />
+    case 'switcher':  return <QuickSwitcher />
+    case 'search':    return <SearchPanel />
+    case 'shortcuts': return <ShortcutsDialog />
+    case 'settings':  return null // settings has its own route; modal is unused
+  }
+}
 
 export default function App() {
   return (
-    <div className="min-h-screen bg-paper text-headline-ink font-ui">
-      <Nav />
+    <WorkspaceProvider>
+      <div className="min-h-screen bg-paper text-headline-ink font-ui flex flex-col">
+        <Nav />
 
-      <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/notes" element={<Notes />} />
-        <Route path="/notes/:id" element={<Notes />} />
-        <Route path="/settings" element={<Settings />} />
-        <Route path="/sync/callback" element={<SyncCallback />} />
-      </Routes>
+        <Routes>
+          <Route path="/" element={<Navigate to="/notes" replace />} />
+          <Route path="/notes" element={<Workspace />} />
+          <Route path="/notes/:id" element={<Workspace />} />
+          <Route path="/home" element={<Home />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/sync/callback" element={<SyncCallback />} />
+        </Routes>
 
-      {/* Editorial closer — full-bleed stamped section + ticker + footer */}
-      <StampedHeader
-        eyebrow="Section"
-        title="Editorial"
-        trailing="—"
-      />
-
-      <InvertedLetter
-        topEyebrow="A brief letter from the work desk"
-        bottomEyebrow="Plate · Mumbai · 2026"
-        body="Plate is a working broadside. Notes go in, ink comes out. The page is paper; the deep sections are ink. There is no other color, and that is the point."
-      />
-
-      <BrandTicker
-        brands={['Notebooks', 'Outlines', 'Daily Notes', 'Code Snippets', 'Reading Lists', 'Diagrams']}
-        withComingSoon={['Diagrams']}
-      />
-
-      <CoordinateFooter />
-    </div>
+        <ModalHost />
+      </div>
+    </WorkspaceProvider>
   )
 }

@@ -1,38 +1,43 @@
-// Sync layer — adapter pattern over three providers.
+// Sync layer — provider-agnostic interface over the three adapters.
+// Each adapter owns its own auth flow now (the Settings page just calls
+// `adapter.connect()`); the index module coordinates: which one is
+// active, status, and the pull/push primitives.
 //
-// Public API:
-//   syncStatus()                          -> Provider | null
-//   connect(provider)                     -> opens OAuth popup, stores token
-//   disconnect()                          -> clears stored creds
-//   pull(provider): Promise<RemoteFile[]> -> fetch remote listing
-//   push(provider, file): Promise<void>   -> upload a single file
-//
-// Tokens live in localStorage (the simplest PKCE-friendly storage in a SPA).
-// For production-hardened security, swap to IndexedDB + non-extractable.
+// Tokens live in localStorage (or IndexedDB later). The Settings page
+// surfaces the active provider, lets the user disconnect, and triggers
+// a manual "Sync now" that pulls remote → merges → vault, then pushes
+// vault → remote for anything dirty.
 
 export type Provider = 'github' | 'gdrive' | 'onedrive'
 
-const KEY = 'plate.sync.active'
+const ACTIVE_KEY = 'plate.sync.active'
+const DIRTY_KEY = 'plate.sync.dirty'
 
 export function syncStatus(): Provider | null {
-  const v = localStorage.getItem(KEY)
+  const v = localStorage.getItem(ACTIVE_KEY)
   if (v === 'github' || v === 'gdrive' || v === 'onedrive') return v
   return null
 }
 
-export function connect(provider: Provider) {
-  localStorage.setItem(KEY, provider)
-  // Open the provider's auth page in a popup. The redirect URI is a
-  // /sync/callback page inside this app that posts the code back to us.
-  const url = authUrl(provider)
-  const w = window.open(url, 'plate-auth', 'width=520,height=720')
-  if (!w) throw new Error('Popup blocked. Allow popups for this site to connect sync.')
-  return waitForAuth()
+function setActive(p: Provider | null) {
+  if (p) localStorage.setItem(ACTIVE_KEY, p)
+  else localStorage.removeItem(ACTIVE_KEY)
 }
 
-export function disconnect() {
-  localStorage.removeItem(KEY)
-  localStorage.removeItem('plate.sync.token')
+import { gdriveAdapter } from './adapters/gdrive'
+// import { githubAdapter } from './adapters/github'
+// import { onedriveAdapter } from './adapters/onedrive'
+
+const adapters = {
+  gdrive: gdriveAdapter,
+  // github: githubAdapter,
+  // onedrive: onedriveAdapter,
+} as const
+
+type WiredProvider = keyof typeof adapters
+
+function isWired(p: Provider): p is WiredProvider {
+  return p in adapters
 }
 
 export type RemoteFile = {
@@ -41,54 +46,112 @@ export type RemoteFile = {
   body: string
 }
 
-function authUrl(p: Provider): string {
-  // Each provider gets its own OAuth config. In a real deployment these
-  // client IDs come from .env at build time. For the dev scaffold we wire
-  // placeholders so the wiring is visible end-to-end.
-  const redirect = `${location.origin}/sync/callback`
-  switch (p) {
-    case 'github':
-      return `https://github.com/login/oauth/authorize?client_id=${import.meta.env.VITE_GH_CLIENT_ID ?? 'PLACEHOLDER'}&scope=repo&redirect_uri=${encodeURIComponent(redirect)}`
-    case 'gdrive':
-      return `https://accounts.google.com/o/oauth2/v2/auth?client_id=${import.meta.env.VITE_GOOGLE_CLIENT_ID ?? 'PLACEHOLDER'}&response_type=token&scope=${encodeURIComponent('https://www.googleapis.com/auth/drive.file')}&redirect_uri=${encodeURIComponent(redirect)}`
-    case 'onedrive':
-      return `https://login.microsoftonline.com/common/oauth2/v2.0/authorize?client_id=${import.meta.env.VITE_MS_CLIENT_ID ?? 'PLACEHOLDER'}&response_type=token&scope=${encodeURIComponent('Files.ReadWrite offline_access')}&redirect_uri=${encodeURIComponent(redirect)}`
+export async function connect(provider: Provider): Promise<void> {
+  if (!isWired(provider)) {
+    throw new Error(`Provider ${provider} is not wired yet.`)
   }
+  await adapters[provider].connect()
+  setActive(provider)
 }
 
-function waitForAuth(): Promise<void> {
-  return new Promise((resolve) => {
-    function onMessage(ev: MessageEvent) {
-      if (ev.data?.type === 'plate-auth-ok') {
-        window.removeEventListener('message', onMessage)
-        resolve()
+export function disconnect(): void {
+  const p = syncStatus()
+  if (p && isWired(p)) {
+    adapters[p].disconnect()
+  }
+  setActive(null)
+  localStorage.removeItem(DIRTY_KEY)
+}
+
+export function isDirty(): boolean {
+  return localStorage.getItem(DIRTY_KEY) === '1'
+}
+
+export function markDirty() {
+  localStorage.setItem(DIRTY_KEY, '1')
+}
+
+export function clearDirty() {
+  localStorage.removeItem(DIRTY_KEY)
+}
+
+export async function pull(): Promise<RemoteFile[]> {
+  const p = syncStatus()
+  if (!p || !isWired(p)) throw new Error('No provider connected.')
+  return adapters[p].list()
+}
+
+export async function push(file: RemoteFile): Promise<void> {
+  const p = syncStatus()
+  if (!p || !isWired(p)) throw new Error('No provider connected.')
+  return adapters[p].write(file)
+}
+
+// Higher-level: run a sync cycle. Pulls remote files, writes any that
+// aren't local, marks local notes dirty so they get pushed next.
+export async function syncNow(): Promise<{ pulled: number; pushed: number; errors: string[] }> {
+  const p = syncStatus()
+  if (!p) throw new Error('No provider connected.')
+  const errors: string[] = []
+  let pulled = 0
+  let pushed = 0
+
+  // 1. Pull
+  try {
+    const remote = await pull()
+    const { listNotes, putNote } = await import('../vault/db')
+    const local = await listNotes()
+    const localByPath = new Map(local.map((n) => [safePath(n.title) + '.md', n]))
+    for (const r of remote) {
+      const existing = localByPath.get(r.path)
+      const body = r.body
+      const title = body.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? r.path.replace(/\.md$/, '')
+      if (!existing) {
+        await putNote({
+          id: crypto.randomUUID(),
+          kind: 'note',
+          title,
+          body,
+          folderId: null,
+          createdAt: Date.now(),
+          updatedAt: Date.now(),
+          remotePath: r.path,
+          remoteSha: r.sha,
+        })
+      } else if (existing.body !== body) {
+        // Last-write-wins: remote overwrites local if they differ.
+        // (A real CRDT would be nicer; for v1 this matches Remotely Save.)
+        await putNote({ ...existing, body, remoteSha: r.sha, updatedAt: Date.now() })
+      }
+      pulled++
+    }
+  } catch (e) {
+    errors.push(`pull: ${(e as Error).message}`)
+  }
+
+  // 2. Push dirty local notes
+  try {
+    const { listNotes, putNote } = await import('../vault/db')
+    const local = await listNotes()
+    for (const n of local) {
+      const path = (n.remotePath ?? safePath(n.title) + '.md')
+      try {
+        await push({ path, sha: n.remoteSha ?? '', body: n.body })
+        // record the path/sha so next push is an update not a create
+        await putNote({ ...n, remotePath: path })
+        pushed++
+      } catch (e) {
+        errors.push(`push ${n.title}: ${(e as Error).message}`)
       }
     }
-    window.addEventListener('message', onMessage)
-  })
+    clearDirty()
+  } catch (e) {
+    errors.push(`push: ${(e as Error).message}`)
+  }
+
+  return { pulled, pushed, errors }
 }
 
-// -- Adapters --
-// Each adapter exposes the same shape: list, read, write.
-
-import { githubAdapter } from './adapters/github'
-import { gdriveAdapter } from './adapters/gdrive'
-import { onedriveAdapter } from './adapters/onedrive'
-
-const adapters = {
-  github: githubAdapter,
-  gdrive: gdriveAdapter,
-  onedrive: onedriveAdapter,
-} as const
-
-export async function pull(provider: Provider): Promise<RemoteFile[]> {
-  const token = localStorage.getItem('plate.sync.token')
-  if (!token) throw new Error('Not connected. Call connect() first.')
-  return adapters[provider].list(token)
-}
-
-export async function push(provider: Provider, file: RemoteFile): Promise<void> {
-  const token = localStorage.getItem('plate.sync.token')
-  if (!token) throw new Error('Not connected. Call connect() first.')
-  return adapters[provider].write(token, file)
+function safePath(s: string): string {
+  return s.replace(/[\\/:*?"<>|]/g, '_').trim() || 'untitled'
 }
