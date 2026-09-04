@@ -1,26 +1,27 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { syncStatus, connect, disconnect, syncNow, isDirty, type Provider } from '../sync'
 import { useWorkspace } from '../state/workspace'
 
 export function Settings() {
   const ws = useWorkspace()
   const [busy, setBusy] = useState(false)
-  const [msg, setMsg] = useState<string>('')
+  const [msg, setMsg] = useState<{ text: string; tone: 'ok' | 'err' | 'info' }>({ text: '', tone: 'info' })
   const [active, setActive] = useState<Provider | null>(syncStatus())
+
+  // Re-check active state on every render in case the OAuth flow
+  // completed in another window/tab
+  useEffect(() => { setActive(syncStatus()) }, [])
 
   async function handleConnect(p: Provider) {
     setBusy(true)
-    setMsg('')
+    setMsg({ text: 'Opening Google sign-in…', tone: 'info' })
     try {
       await connect(p)
       setActive(syncStatus())
-      setMsg('Connected. Plate now writes to a "Plate" folder in your Drive.')
+      setMsg({ text: 'Connected. Notes will sync to a "Plate" folder in your Google Drive.', tone: 'ok' })
     } catch (e) {
       const err = e as Error
-      // Google auth errors often arrive as plain query params on the
-      // redirect: ?error=access_denied&error_description=...
-      // Surface the raw message verbatim so misconfigurations are obvious.
-      setMsg(err.message)
+      setMsg({ text: `Could not connect: ${err.message}`, tone: 'err' })
     } finally {
       setBusy(false)
     }
@@ -29,21 +30,21 @@ export function Settings() {
   function handleDisconnect() {
     disconnect()
     setActive(null)
-    setMsg('Disconnected.')
+    setMsg({ text: 'Disconnected. Your notes remain on this device.', tone: 'info' })
   }
 
   async function handleSyncNow() {
     setBusy(true)
-    setMsg('Syncing…')
+    setMsg({ text: 'Syncing…', tone: 'info' })
     try {
       ws.setSyncStatus('syncing')
       const r = await syncNow()
-      const tail = r.errors.length ? ` · ${r.errors.length} error(s)` : ''
-      setMsg(`Pulled ${r.pulled}, pushed ${r.pushed}${tail}`)
+      const tail = r.errors.length ? ` · ${r.errors.length} error(s): ${r.errors[0]}` : ''
+      setMsg({ text: `Synced. Pulled ${r.pulled} · pushed ${r.pushed}${tail}`, tone: r.errors.length ? 'err' : 'ok' })
       ws.setLastSync(Date.now())
       ws.setSyncStatus(r.errors.length ? 'error' : 'idle')
     } catch (e) {
-      setMsg((e as Error).message)
+      setMsg({ text: `Sync failed: ${(e as Error).message}`, tone: 'err' })
       ws.setSyncStatus('error')
     } finally {
       setBusy(false)
@@ -60,73 +61,94 @@ export function Settings() {
       {/* Google Drive — fully wired */}
       <ProviderCard
         label="Google Drive"
-        hint="Sync a 'Plate' folder in your Google Drive. One-way last-write-wins."
+        description="Notes sync to a 'Plate' folder in your Google Drive. The app can only see files it created — your other Drive content is private."
+        scope="drive.file"
         active={active === 'gdrive'}
         busy={busy}
+        dirty={isDirty()}
         onConnect={() => handleConnect('gdrive')}
         onDisconnect={handleDisconnect}
-        showSync
         onSyncNow={handleSyncNow}
-        dirty={isDirty()}
       />
 
-      <DisabledCard
+      <DisabledProviderCard
         label="OneDrive"
-        hint="Coming next — Azure app registration required."
+        description="Coming soon. Will sync a 'Plate' folder in your OneDrive using your Microsoft account."
       />
 
-      <DisabledCard
+      <DisabledProviderCard
         label="GitHub"
-        hint="Coming next — Personal Access Token or Cloudflare Worker for OAuth."
+        description="Coming soon. Will sync notes as markdown files in a GitHub repository."
       />
 
-      {msg && (
-        <p className="mt-6 text-caption uppercase tracking-tight font-ui border-t border-hairline pt-4">
-          ° {msg}
-        </p>
+      {msg.text && (
+        <div
+          className={[
+            'mt-8 px-4 py-3 border rounded-xl font-ui',
+            msg.tone === 'ok' ? 'border-headline-ink' : '',
+            msg.tone === 'err' ? 'border-headline-ink bg-headline-ink text-paper' : '',
+            msg.tone === 'info' ? 'border-hairline' : '',
+          ].join(' ')}
+        >
+          <p className="text-body break-words">{msg.text}</p>
+        </div>
       )}
 
       <hr className="my-12 border-hairline" />
 
-      <p className="text-caption uppercase tracking-tight font-ui opacity-60">
-        ° Tokens live in this browser only. No server. No telemetry.
-      </p>
+      <div className="space-y-2 text-caption uppercase tracking-tight font-ui opacity-60">
+        <p>° Tokens live in this browser only. No server. No telemetry.</p>
+        <p>° Reset: clear browser data to forget all sync state.</p>
+      </div>
     </main>
   )
 }
 
-function ProviderCard({ label, hint, active, busy, onConnect, onDisconnect, showSync, onSyncNow, dirty }: {
-  label: string; hint: string; active: boolean; busy: boolean
-  onConnect: () => void; onDisconnect: () => void
-  showSync?: boolean; onSyncNow?: () => void; dirty?: boolean
+function ProviderCard({ label, description, scope, active, busy, dirty, onConnect, onDisconnect, onSyncNow }: {
+  label: string
+  description: string
+  scope: string
+  active: boolean
+  busy: boolean
+  dirty: boolean
+  onConnect: () => void
+  onDisconnect: () => void
+  onSyncNow: () => void
 }) {
   return (
-    <div className="border border-hairline rounded-xl p-6 mb-6 flex items-start justify-between gap-6">
-      <div>
-        <p className="text-subheading font-display">{label}</p>
-        <p className="text-body opacity-60 mt-1">{hint}</p>
-        {active && (
-          <p className="text-caption uppercase tracking-tight mt-3 opacity-60">
-            ° Connected{dirty ? ' · unsynced changes' : ''}
+    <div className="border border-headline-ink rounded-xl p-6 mb-6">
+      <div className="flex items-start justify-between gap-6">
+        <div className="min-w-0 flex-1">
+          <div className="flex items-baseline gap-3">
+            <p className="text-subheading font-display">{label}</p>
+            {active && (
+              <span className="text-caption uppercase tracking-tight font-ui border border-headline-ink rounded-xl px-2 py-0.5">
+                Connected
+              </span>
+            )}
+          </div>
+          <p className="text-body opacity-70 mt-1">{description}</p>
+          <p className="text-caption uppercase tracking-tight font-ui opacity-50 mt-2">
+            ° scope: {scope}
+            {dirty && active ? ' · unsynced changes' : ''}
           </p>
-        )}
+        </div>
       </div>
-      <div className="flex flex-col items-end gap-2">
+
+      <div className="mt-4 flex flex-wrap items-center gap-2">
         {active ? (
           <>
-            {showSync && (
-              <button
-                onClick={onSyncNow}
-                disabled={busy}
-                className="border border-headline-ink text-caption uppercase tracking-tight font-bold rounded-xl px-4 py-2 font-ui disabled:opacity-40"
-              >
-                Sync now
-              </button>
-            )}
+            <button
+              onClick={onSyncNow}
+              disabled={busy}
+              className="border border-headline-ink text-caption uppercase tracking-tight font-bold rounded-xl px-4 py-2 font-ui hover:bg-headline-ink hover:text-paper transition-colors disabled:opacity-40"
+            >
+              {busy ? 'Syncing…' : 'Sync now'}
+            </button>
             <button
               onClick={onDisconnect}
               disabled={busy}
-              className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100 disabled:opacity-30"
+              className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100 disabled:opacity-30 px-3 py-2"
             >
               Disconnect
             </button>
@@ -137,7 +159,7 @@ function ProviderCard({ label, hint, active, busy, onConnect, onDisconnect, show
             disabled={busy}
             className="border border-headline-ink text-caption uppercase tracking-tight font-bold rounded-xl px-4 py-2 font-ui hover:bg-headline-ink hover:text-paper transition-colors disabled:opacity-40"
           >
-            Connect
+            {busy ? 'Opening…' : 'Connect'}
           </button>
         )}
       </div>
@@ -145,11 +167,11 @@ function ProviderCard({ label, hint, active, busy, onConnect, onDisconnect, show
   )
 }
 
-function DisabledCard({ label, hint }: { label: string; hint: string }) {
+function DisabledProviderCard({ label, description }: { label: string; description: string }) {
   return (
     <div className="border border-hairline rounded-xl p-6 mb-6 opacity-50">
       <p className="text-subheading font-display">{label}</p>
-      <p className="text-body mt-1">{hint}</p>
+      <p className="text-body mt-1">{description}</p>
     </div>
   )
 }

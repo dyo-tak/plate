@@ -33,17 +33,23 @@ function getToken(): Token | null {
   return { accessToken: t, expiresAt }
 }
 
-// Build the OAuth redirect URI. We register a single static callback
-// at the root of the deployed site: `sync-callback.html` (served at
-// `https://dyotak.me/sync-callback.html`). This keeps the redirect
-// URI stable across deployments and across the dev/prod boundary,
-// which matters because Google requires an exact match for the
-// registered URI.
+// Build the OAuth redirect URI. The deployed site is served from
+// `https://dyotak.me/plate/` (project site with custom domain), and
+// the static callback page lives at `/plate/sync-callback.html`.
+// We hardcode that path here because the deployed location is
+// stable; if you re-deploy under a different path, update this
+// function and the Google Cloud Console redirect URI together.
 //
-// The provider is passed as a query string so the same static page
-// can dispatch to the right adapter in the future (OneDrive etc.).
+// Why a static HTML file and not a React route: the OAuth popup
+// opens a fresh top-level document. HashRouter doesn't help here
+// (the popup's URL has no hash). A static file is the most reliable
+// way to get a callback handler that runs even with JS disabled
+// for the very first paint, and the same handler can dispatch to
+// any provider by reading the `?provider=` query.
+const DEPLOYED_BASE = '/plate'
+
 function buildRedirectUri(): string {
-  return `${location.origin}/sync-callback.html?provider=gdrive`
+  return `${location.origin}${DEPLOYED_BASE}/sync-callback.html?provider=gdrive`
 }
 
 export function openGoogleAuth(): Promise<string> {
