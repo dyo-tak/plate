@@ -1,0 +1,137 @@
+<!doctype html>
+<!--
+  OAuth callback landing for the Google Drive adapter.
+
+  This file MUST live at the root of the served site because Google's
+  OAuth redirect URI requires an exact match, and registering multiple
+  per-deployment subpaths is impractical. We host this single static
+  page at /sync-callback.html and register
+  https://dyotak.me/sync-callback.html?provider=gdrive
+  in the Google Cloud Console as the redirect URI.
+
+  (Note: the query string is part of the URI when registered.)
+
+  When the OAuth flow lands here, we:
+    1. Read the token (or error) from the URL fragment
+    2. Post it to the opener (the main Plate window)
+    3. Close the popup
+  The main Plate window's gdrive adapter is listening for the
+  plate-gdrive-auth message and stores the token on receipt.
+-->
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>Plate — closing connection…</title>
+    <style>
+      body {
+        background: #fafafa;
+        color: #2a2722;
+        font-family: ui-sans-serif, system-ui, -apple-system, sans-serif;
+        margin: 0;
+        min-height: 100vh;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 24px;
+      }
+      .msg {
+        max-width: 480px;
+        text-align: center;
+        font-size: 18px;
+        line-height: 1.4;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="msg" id="msg">Closing connection…</div>
+    <script>
+      (function () {
+        var params = new URLSearchParams(location.search)
+        var hash = new URLSearchParams(location.hash.slice(1))
+        var provider = params.get('provider') || 'generic'
+        var queryError = params.get('error')
+        var queryErrorDesc = params.get('error_description')
+        var fragmentError = hash.get('error')
+
+        function show(text) {
+          var el = document.getElementById('msg')
+          if (el) el.textContent = text
+        }
+
+        function postToOpener(msg) {
+          try {
+            if (window.opener) {
+              window.opener.postMessage(msg, location.origin)
+              return true
+            }
+          } catch (e) {}
+          return false
+        }
+
+        function closeSoon(ms) {
+          setTimeout(function () { try { window.close() } catch (e) {} }, ms)
+        }
+
+        if (queryError || fragmentError) {
+          var desc = queryErrorDesc || fragmentError || ''
+          var err = queryError
+            ? ('Google: ' + queryError + (desc ? ' — ' + desc : ''))
+            : ('Auth: ' + fragmentError)
+          show(err)
+          if (!postToOpener({ type: 'plate-gdrive-auth', error: err })) {
+            // No opener — try to redirect to the app
+            setTimeout(function () { location.replace('/plate/#/settings') }, 3000)
+          } else {
+            closeSoon(2500)
+          }
+          return
+        }
+
+        if (provider === 'gdrive') {
+          var accessToken = hash.get('access_token')
+          var expiresIn = parseInt(hash.get('expires_in') || '3600', 10)
+          if (!accessToken) {
+            var msg = 'No access_token in the response from Google.'
+            show(msg)
+            if (!postToOpener({ type: 'plate-gdrive-auth', error: msg })) {
+              setTimeout(function () { location.replace('/plate/#/settings') }, 3000)
+            } else {
+              closeSoon(2500)
+            }
+            return
+          }
+          // Persist immediately so a hard refresh still works
+          try {
+            localStorage.setItem('plate.sync.gdrive.token', accessToken)
+            localStorage.setItem('plate.sync.gdrive.expires', String(Date.now() + expiresIn * 1000))
+            localStorage.setItem('plate.sync.active', 'gdrive')
+          } catch (e) {}
+          show('Connected. Closing…')
+          if (!postToOpener({ type: 'plate-gdrive-auth', accessToken: accessToken, expiresIn: expiresIn })) {
+            setTimeout(function () { location.replace('/plate/#/settings') }, 300)
+          } else {
+            closeSoon(300)
+          }
+          return
+        }
+
+        // Generic auth code / token
+        var code = params.get('code')
+        var token = hash.get('access_token')
+        var value = token || code || ''
+        if (value) {
+          try { localStorage.setItem('plate.sync.token', value) } catch (e) {}
+          show('Connected. Closing…')
+          if (!postToOpener({ type: 'plate-auth-ok', value: value })) {
+            setTimeout(function () { location.replace('/plate/#/settings') }, 300)
+          } else {
+            closeSoon(300)
+          }
+        } else {
+          show('Nothing to do.')
+          setTimeout(function () { location.replace('/plate/#/settings') }, 1500)
+        }
+      })()
+    </script>
+  </body>
+</html>
