@@ -4,7 +4,6 @@ import { WorkspaceProvider } from './state/workspace'
 import { Workspace } from './pages/Workspace'
 import { Home } from './pages/Home'
 import { Settings } from './pages/Settings'
-import SyncCallback from './pages/SyncCallback'
 import { CommandPalette } from './components/CommandPalette'
 import { QuickSwitcher } from './components/QuickSwitcher'
 import { SearchPanel } from './components/SearchPanel'
@@ -35,7 +34,6 @@ export default function App() {
           <Route path="/notes/:id" element={<Workspace />} />
           <Route path="/home" element={<Home />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/sync/callback" element={<SyncCallback />} />
         </Routes>
 
         <ModalHost />

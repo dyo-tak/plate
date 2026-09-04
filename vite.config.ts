@@ -2,15 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
 
-// Vite config — base path is the deployed GitHub Pages subpath so that
-// OAuth redirect URIs and asset URLs all resolve correctly at runtime.
-// To deploy elsewhere, change this to '/' or './' and update the
-// Google Cloud Console redirect URI to match.
-const BASE = process.env.PLATE_BASE ?? '/plate/'
-
+// Vite config. We use HashRouter for routing, so the base path
+// doesn't matter at runtime — it only affects the URL of the
+// generated asset files in the production build. We default to
+// './' for portability (works under any subpath or domain).
 export default defineConfig({
   plugins: [react(), tailwindcss()],
-  base: BASE,
+  base: './',
   build: {
     target: 'es2022',
     sourcemap: true,

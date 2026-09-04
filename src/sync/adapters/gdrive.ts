@@ -33,19 +33,17 @@ function getToken(): Token | null {
   return { accessToken: t, expiresAt }
 }
 
-// Build the OAuth redirect URI. Vite's `base` is set to the deployed
-// path in vite.config.ts (e.g. '/plate/' for GitHub Pages, '/' for dev).
-// `import.meta.env.BASE_URL` resolves to that path at build time, so
-// the redirect URI always matches the current deployment without
-// runtime path inspection.
+// Build the OAuth redirect URI. We register a single static callback
+// at the root of the deployed site: `sync-callback.html` (served at
+// `https://dyotak.me/sync-callback.html`). This keeps the redirect
+// URI stable across deployments and across the dev/prod boundary,
+// which matters because Google requires an exact match for the
+// registered URI.
 //
-// Examples:
-//   base = '/plate/'  →  https://dyotak.me/plate/sync/callback?provider=gdrive
-//   base = '/'        →  http://localhost:5173/sync/callback?provider=gdrive
+// The provider is passed as a query string so the same static page
+// can dispatch to the right adapter in the future (OneDrive etc.).
 function buildRedirectUri(): string {
-  const base = import.meta.env.BASE_URL || '/'
-  const clean = base.endsWith('/') ? base : `${base}/`
-  return `${location.origin}${clean}sync/callback?provider=gdrive`
+  return `${location.origin}/sync-callback.html?provider=gdrive`
 }
 
 export function openGoogleAuth(): Promise<string> {
