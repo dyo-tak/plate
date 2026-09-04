@@ -33,12 +33,27 @@ function getToken(): Token | null {
   return { accessToken: t, expiresAt }
 }
 
+// Build the OAuth redirect URI. Vite's `base` is set to the deployed
+// path in vite.config.ts (e.g. '/plate/' for GitHub Pages, '/' for dev).
+// `import.meta.env.BASE_URL` resolves to that path at build time, so
+// the redirect URI always matches the current deployment without
+// runtime path inspection.
+//
+// Examples:
+//   base = '/plate/'  →  https://dyotak.me/plate/sync/callback?provider=gdrive
+//   base = '/'        →  http://localhost:5173/sync/callback?provider=gdrive
+function buildRedirectUri(): string {
+  const base = import.meta.env.BASE_URL || '/'
+  const clean = base.endsWith('/') ? base : `${base}/`
+  return `${location.origin}${clean}sync/callback?provider=gdrive`
+}
+
 export function openGoogleAuth(): Promise<string> {
   const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID
   if (!clientId || clientId === 'PLACEHOLDER') {
     throw new Error('VITE_GOOGLE_CLIENT_ID is not configured. Set it in .env.production.')
   }
-  const redirect = `${location.origin}/sync/callback?provider=gdrive`
+  const redirect = buildRedirectUri()
   const scope = encodeURIComponent('https://www.googleapis.com/auth/drive.file')
   const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&response_type=token&scope=${scope}&redirect_uri=${encodeURIComponent(redirect)}&prompt=consent&include_granted_scopes=true`
 

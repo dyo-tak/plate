@@ -16,7 +16,11 @@ export function Settings() {
       setActive(syncStatus())
       setMsg('Connected. Plate now writes to a "Plate" folder in your Drive.')
     } catch (e) {
-      setMsg((e as Error).message)
+      const err = e as Error
+      // Google auth errors often arrive as plain query params on the
+      // redirect: ?error=access_denied&error_description=...
+      // Surface the raw message verbatim so misconfigurations are obvious.
+      setMsg(err.message)
     } finally {
       setBusy(false)
     }
