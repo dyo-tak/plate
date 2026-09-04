@@ -125,30 +125,34 @@ export function Editor({ note, onChange, onModeChange, onDelete }: Props) {
   }, [doc, note])
 
   return (
-    <div className="h-full flex flex-col">
-      <div className="px-6 pt-4 pb-2 flex items-center justify-between border-b border-hairline">
-        <div>
-          <p className="text-caption uppercase tracking-tight font-ui opacity-60">
-            ° {note.title} · updated {new Date(note.updatedAt).toLocaleString()}
+    <div className="h-full flex flex-col min-h-0">
+      <div className="px-4 md:px-6 pt-3 pb-2 flex items-center justify-between gap-2 border-b border-hairline">
+        <div className="min-w-0 flex-1">
+          <p className="text-caption uppercase tracking-tight font-ui opacity-60 truncate">
+            ° {note.title}
+          </p>
+          <p className="text-caption font-ui opacity-50 truncate">
+            {new Date(note.updatedAt).toLocaleString()}
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2 shrink-0">
           <button
             onClick={() => setMode((m) => { const n = m === 'preview' ? 'source' : 'preview'; onModeChange?.(n); return n })}
-            className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100"
+            className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100 px-2 py-1"
             title="Toggle preview/source (F8)"
           >
-            ° {mode === 'preview' ? 'Live preview' : 'Source'}
+            {mode === 'preview' ? 'Preview' : 'Source'}
           </button>
           <button
             onClick={onDelete}
-            className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100"
+            className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100 px-2 py-1"
+            title="Delete note"
           >
             Delete
           </button>
         </div>
       </div>
-      <div ref={hostRef} className="flex-1 overflow-auto font-serif" />
+      <div ref={hostRef} className="flex-1 overflow-auto font-serif min-h-0" />
     </div>
   )
 }

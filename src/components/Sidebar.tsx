@@ -1,5 +1,6 @@
 // Sidebar — file tree with nested folders, collapse/expand, context menu.
-// Reads/writes through the vault, mirrors the current `activeId`.
+// On mobile, rendered as a slide-in panel; the optional `onClose` prop
+// shows a × button at the top.
 
 import { useEffect, useState, useMemo } from 'react'
 import { useNavigate } from 'react-router-dom'
@@ -47,7 +48,9 @@ function flatten(nodes: TreeNode[], out: TreeNode[] = [], collapsed: Set<string>
   return out
 }
 
-export function Sidebar() {
+type Props = { onClose?: () => void }
+
+export function Sidebar({ onClose }: Props = {}) {
   const ws = useWorkspace()
   const navigate = useNavigate()
   const [notes, setNotes] = useState<Note[]>([])
@@ -60,7 +63,6 @@ export function Sidebar() {
     setFolders(await listFolders())
   }
   useEffect(() => { refresh() }, [])
-  // Re-fetch when tabs change (someone opened/closed a note from elsewhere)
   useEffect(() => { refresh() }, [ws.tabs.length])
 
   const tree = useMemo(() => buildTree(folders, notes), [folders, notes])
@@ -109,7 +111,6 @@ export function Sidebar() {
     e.stopPropagation()
     setMenu({ type, id, x: e.clientX, y: e.clientY })
   }
-  // close on outside click
   useEffect(() => {
     if (!menu) return
     const close = () => setMenu(null)
@@ -118,35 +119,62 @@ export function Sidebar() {
   }, [menu])
 
   return (
-    <aside className="h-full flex flex-col bg-paper border-r border-hairline">
-      <div className="px-4 py-3 border-b border-hairline flex items-center gap-2">
+    <aside className="h-full flex flex-col bg-paper">
+      {/* Header — close button on mobile, action buttons on desktop */}
+      <div className="px-3 py-2.5 border-b border-hairline flex items-center gap-1.5">
+        {onClose && (
+          <button
+            onClick={onClose}
+            className="md:hidden -ml-1 px-2 py-1 font-ui text-body hover:bg-hairline/40 rounded"
+            aria-label="Close sidebar"
+            title="Close"
+          >
+            ×
+          </button>
+        )}
         <input
           value={filter}
           onChange={(e) => setFilter(e.target.value)}
           placeholder="Filter…"
-          className="flex-1 bg-transparent text-body font-ui placeholder:text-pebble outline-none"
+          className="flex-1 min-w-0 bg-transparent text-body font-ui placeholder:text-pebble outline-none px-1"
         />
         <button
           onClick={() => handleNewNote(null)}
           title="New note (Ctrl/Cmd+N)"
-          className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100"
+          aria-label="New note"
+          className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100 px-1.5 py-1 hover:bg-hairline/40 rounded"
         >
           + note
         </button>
         <button
           onClick={() => handleNewFolder(null)}
           title="New folder"
-          className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100"
+          aria-label="New folder"
+          className="text-caption uppercase tracking-tight font-ui opacity-60 hover:opacity-100 px-1.5 py-1 hover:bg-hairline/40 rounded"
         >
           + folder
         </button>
       </div>
 
-      <div className="flex-1 overflow-y-auto py-2">
+      <div className="flex-1 overflow-y-auto py-1">
         {filtered.length === 0 && (
-          <p className="px-4 py-8 text-caption font-ui opacity-60">
-            {filter ? 'No matches.' : 'No notes yet. Press Ctrl/Cmd+N.'}
-          </p>
+          <div className="px-4 py-8 text-center">
+            {filter ? (
+              <p className="text-caption font-ui opacity-60">No matches.</p>
+            ) : (
+              <>
+                <p className="text-caption uppercase tracking-tight font-ui opacity-50 mb-3">
+                  ° No notes yet
+                </p>
+                <button
+                  onClick={() => handleNewNote(null)}
+                  className="text-body font-ui border border-hairline rounded-xl px-3 py-1.5 hover:bg-hairline/40"
+                >
+                  + Create your first note
+                </button>
+              </>
+            )}
+          </div>
         )}
         {filtered.map((node) => {
           if (node.kind === 'folder') {
@@ -160,11 +188,11 @@ export function Sidebar() {
                 onClick={() => handleToggle(f.id)}
                 onContextMenu={(e) => openMenu(e, 'folder', f.id)}
               >
-                <span className="text-caption w-4 inline-block opacity-60">{isCollapsed ? '▸' : '▾'}</span>
+                <span className="text-caption w-3 inline-block opacity-60">{isCollapsed ? '▸' : '▾'}</span>
                 <span className="text-body font-ui truncate flex-1">{f.name}</span>
                 <button
                   onClick={(e) => { e.stopPropagation(); handleNewNote(f.id) }}
-                  className="opacity-0 group-hover:opacity-60 hover:!opacity-100 text-caption"
+                  className="opacity-0 group-hover:opacity-60 hover:!opacity-100 text-caption px-1"
                   title="New note in folder"
                 >
                   +
@@ -182,8 +210,10 @@ export function Sidebar() {
                 draggable
                 onDragStart={(e) => e.dataTransfer.setData('text/plain', n.id)}
                 className={[
-                  'group flex items-center gap-1 pr-2 cursor-pointer truncate',
-                  active ? 'bg-headline-ink text-paper' : 'hover:bg-hairline/40',
+                  'group flex items-center gap-1 pr-2 cursor-pointer truncate border-l-2',
+                  active
+                    ? 'bg-headline-ink text-paper border-l-headline-ink'
+                    : 'border-l-transparent hover:bg-hairline/40',
                 ].join(' ')}
                 style={{ paddingLeft: 8 + node.depth * 12 + 16 }}
                 title={n.title}
@@ -198,9 +228,9 @@ export function Sidebar() {
         })}
       </div>
 
-      <div className="border-t border-hairline px-4 py-2 text-caption font-ui opacity-60 flex items-center justify-between">
-        <span>{notes.length} notes</span>
-        <span>{folders.length} folders</span>
+      <div className="border-t border-hairline px-3 py-1.5 text-caption font-ui opacity-60 flex items-center justify-between">
+        <span>{notes.length} {notes.length === 1 ? 'note' : 'notes'}</span>
+        <span>{folders.length} {folders.length === 1 ? 'folder' : 'folders'}</span>
       </div>
 
       {menu && (
@@ -209,7 +239,6 @@ export function Sidebar() {
           y={menu.y}
           items={menu.type === 'note'
             ? [
-                { label: 'Rename', onClick: () => alert('Rename — edit the H1 in the body') },
                 { label: 'Move to root', onClick: async () => { if (menu.id) { await moveNote(menu.id, null); refresh() } } },
                 { label: 'Delete', danger: true, onClick: () => menu.id && handleDelete(menu.id, 'note') },
               ]
